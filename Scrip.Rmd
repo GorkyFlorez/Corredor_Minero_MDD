@@ -1,0 +1,243 @@
+---
+title: "Corredor Minero - Madre de Dios"
+author: "Direccion Regional de Energía, Minas e Hidrocarburos de Madre de Dios"
+date: ""
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: [ "twitter", "facebook", "whatsapp", "instagram", "telegram", "linkedin", "pinterest" ]
+    source_code: "https://github.com/GorkyFlorez"
+    theme: flatly
+    # "default", "cerulean", "journal", "flatly", "darkly", "readable", "spacelab", "united", "cosmo", "lumen", "paper", "sandstone", "simplex", "yeti"
+---
+
+
+```{r setup, include=FALSE}
+library(rgee)
+library(googledrive)
+library(rgee)
+library(mapedit)
+library(tibble)
+library(sf)
+library(cptcity)
+library(tidyverse)
+library(sp)
+library(leaflet.extras2)
+library(raster)
+library(stars)
+library(geojsonio)
+
+ee_Initialize("gflorezc", drive = T)
+
+Corredor_Minero <-ee$FeatureCollection("users/gflorezc/Corredor_Minero")
+
+sentinel2 <- ee$ImageCollection("COPERNICUS/S2")
+Trueimage <-sentinel2$filterBounds(Corredor_Minero)$ 
+  filterDate("2021-08-01", "2022-01-16")$ 
+  sort("CLOUDY_PIXEL_PERCENTAGE", FALSE)$
+  mosaic()$
+  clip(Corredor_Minero)
+
+
+trueColor <- list(min= 0,max= 3000, bands= c("B11","B8", "B2"))
+trueCo    <- list(min= 0,max= 3000, bands= c("B4","B3", "B2"))
+NDVI_s    <- Trueimage$normalizedDifference(c("B8", "B4"))
+viz_ndvi <- list(min = -0.1,max = 0.9,palette = cpt("grass_ndvi"))
+
+  
+m3 <-Map$addLayer(Trueimage, visParams = trueColor,
+                  name= "Analisis de Agricultura")
+
+m8 <-Map$addLayer(Trueimage, visParams = trueCo,
+                  name= "Color Natural")
+
+m4 <-Map$addLayer(eeObject =NDVI_s , "NDVI_Sentinel", visParams = viz_ndvi) +
+  Map$addLegend(
+    visParams = viz_ndvi)
+
+
+box <- ee$Geometry$Rectangle(coords= c(-70.71646 , -13.1792, -68.85372 , -12.40527),
+                             proj= "EPSG:4326", geodesic = F)
+
+B432 <-sentinel2$filterBounds(Corredor_Minero)$ 
+  filterDate("2021-08-01", "2022-01-16")$ 
+  sort("CLOUDY_PIXEL_PERCENTAGE", FALSE)$
+  mosaic()$
+  clip(Corredor_Minero)%>% 
+  ee$Image$select(c("B4","B3", "B2"))
+
+B11_8_2 <-sentinel2$filterBounds(Corredor_Minero)$ 
+  filterDate("2021-08-01", "2022-01-16")$ 
+  sort("CLOUDY_PIXEL_PERCENTAGE", FALSE)$
+  mosaic()$
+  clip(Corredor_Minero)%>% 
+  ee$Image$select(c("B11","B8", "B2"))
+
+# Conjunto de datos de entrenamiento
+trainig <- Trueimage$sample(region = Corredor_Minero,
+                            scale= 3,
+                            numPixels =1000)
+clusterer <- ee$Clusterer$wekaKMeans(10)$train(trainig)
+result <- Trueimage$cluster(clusterer)
+
+#NDVI_s %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_NDVI/Corredor_minero_NDVI") -> img_clas
+#B432 %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_432/Corredor_minero_432") -> img_clas
+#result %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_cla/Corredor_minero_CLASIFICACION") -> img_clas
+#B11_8_2 %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_11/Corredor_minero_11_8_2") -> img_clas
+
+
+
+#-------------------------------LANDSAT 5 2003-07-20---------------------------
+
+#coll <- ee$ImageCollection("LANDSAT/LT05/C01/T1_SR")$
+#filterDate("2003-01-01", "2004-12-01")$
+#filterBounds(ee$Geometry$Point(-69.914, -12.7823))$
+#filterMetadata("CLOUD_COVER", "less_than", 5)
+#ee_get_date_ic(coll)
+
+L5_2003 <- ee$Image('LANDSAT/LT05/C01/T1_SR/LT05_003069_20031015')$
+  clip(Corredor_Minero)
+
+trueCo <- list(min= 0,max= 3000,gamma=1.4, bands= c("B3","B2", "B1"))
+
+L5_2003_NDVI      <- L5_2003$normalizedDifference(c("B4", "B3"))
+
+viz_ndvii <- list(palette=c('FFFFFF', 'CE7E45', 'DF923D', 'F1B555', 'FCD163', '99B718', '74A901',
+                            '66A000', '529400', '3E8601', '207401', '056201', '004C00', '023B01',
+                            '012E01', '011D01', '011301'))
+
+Color_432 <-ee$Image('LANDSAT/LT05/C01/T1_SR/LT05_003069_20031015')$
+  clip(Corredor_Minero)%>% 
+  ee$Image$select(c("B3","B2", "B1"))
+
+    
+m9 = Map$addLayer(L5_2003, visParams = trueCo) 
+m10= Map$addLayer(eeObject =L5_2003_NDVI , visParams = viz_ndvii) 
+
+
+#L5_2003_NDVI %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_NDVI_2003/Corredor_minero_NDVI_2003") -> img_clas
+#Color_432 %>% ee_as_raster(region= box, scale=10, dsn="Corredor_minero_2003_10_15/Corredor_minero_2003_10_15") -> img_las
+
+```
+
+
+Índice de vegetación de diferencia normalizada- 2003 - 2021 (Corredor Minero Madre de Dios)
+=====
+
+Row {data-height=1100}
+--------------------------------------
+
+
+###  {data-width=500}
+
+```{r}
+Map$centerObject(Corredor_Minero) 
+Map$addLayer(L5_2003, visParams = trueCo, name= "Color Natural 2003")  + Map$addLayer(eeObject =L5_2003_NDVI , visParams = viz_ndvii, name= "NDVI - 2003")  | 
+  Map$addLayer(Trueimage, visParams = trueColor,
+                  name= "Analisis de Agricultura - 2021") + Map$addLayer(eeObject =NDVI_s , "NDVI - 2021", visParams = viz_ndvi) +
+  Map$addLegend(
+    visParams = viz_ndvi) + Map$addLayer(Trueimage, visParams = trueCo,
+                  name= "Color Natural - 2021")
+```
+
+
+
+Row {data-height=100}
+--------------------------------------
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://sydney-informatics-hub.github.io/lessonbmc/fig/tidyverse_website.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://user-images.githubusercontent.com/520851/34887433-ce1d130e-f7c6-11e7-83fc-d60ad4fae6bd.gif")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://user-images.githubusercontent.com/3457131/78889080-49661800-7a63-11ea-9442-d8c2eecd4a3f.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://i.stack.imgur.com/cuCPz.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("http://gauss.inf.um.es:8080/tabular-tidyverse/www/images/hex-tidyverse.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://miro.medium.com/max/590/1*GOS7SjdpRRUKVdLNwrFAGg.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://1.bp.blogspot.com/-aRS5UR3YlmY/X8Vkko0Ip3I/AAAAAAAAJKE/aujyMdWalXs7pwEkw7-8F17OLc5T4bVRQCLcBGAsYHQ/s278/logo.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://gtable.r-lib.org/logo.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://cran.r-project.org/web/packages/cowplot/readme/man/figures/logo.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://pkgs.rstudio.com/flexdashboard/reference/figures/logo.png")
+```
+
+###
+```{r}
+# this is the original gif
+knitr::include_graphics("https://www.kindpng.com/picc/m/403-4036373_shiny-shiny-r-logo-png-transparent-png.png")
+```
+ 
+
+###  
+```{r}
+# this is the original gif
+knitr::include_graphics("https://user-images.githubusercontent.com/16768318/118376965-5f7dca80-b5cb-11eb-9a82-47876680a3e6.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://cdn.conceptosclaros.com/wp-content/uploads/2016/07/RStudio-Ball.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://www.osgeo.org/wp-content/uploads/leaflet.png")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://ecodatascience.files.wordpress.com/2019/06/4.jpg")
+```
+
+### 
+```{r}
+# this is the original gif
+knitr::include_graphics("https://user-images.githubusercontent.com/16768318/118376968-63a9e800-b5cb-11eb-83e7-3f36299e17cb.png")
+```
